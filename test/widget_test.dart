@@ -34,11 +34,11 @@ class _ChatSejarahScreenState extends State<ChatSejarahScreen> {
   String _aiResponse = "Halo! Silakan tanya sejarah Indonesia. Saya akan menjawab dengan singkat dan akurat.";
   bool _isLoading = false;
 
-  // GANTI DENGAN API KEY ANDA
+  // API KEY Anda yang sudah terpasang
   final String _apiKey = 'AIzaSyAwhU4L5-dP6CKHwKKFHVNuTOKZj4_E8Zg';
 
   Future<void> _askAi(String query) async {
-    if (query.isEmpty) return;
+    if (query.trim().isEmpty) return;
 
     setState(() {
       _isLoading = true;
@@ -46,9 +46,10 @@ class _ChatSejarahScreenState extends State<ChatSejarahScreen> {
     });
 
     try {
+      // Menggunakan model Gemini 1.5 Flash sesuai kode Anda
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _apiKey);
       
-      // INI ADALAH INSTRUKSI KHUSUS DENGAN 30 DATA ANDA
+      // Instruksi khusus (Prompt Engineering) agar AI membaca data sejarah Anda
       final prompt = """
       Kamu adalah asisten sejarah Indonesia. Jawablah pertanyaan dengan SANGAT SINGKAT.
       Gunakan data berikut sebagai referensi utama:
@@ -90,11 +91,12 @@ class _ChatSejarahScreenState extends State<ChatSejarahScreen> {
       final response = await model.generateContent(content);
 
       setState(() {
+        // Mengambil teks response langsung dari objek response
         _aiResponse = response.text ?? "Maaf, jawaban tidak ditemukan.";
       });
     } catch (e) {
       setState(() {
-        _aiResponse = "Gagal terhubung. Cek API Key dan Internet.";
+        _aiResponse = "❌ Gagal terhubung. Pastikan API Key benar dan internet aktif. Error: $e";
       });
     } finally {
       setState(() {
@@ -109,7 +111,7 @@ class _ChatSejarahScreenState extends State<ChatSejarahScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.red,
-        title: const Text("Sejarah Indonesia AI", style: TextStyle(color: Colors.white)),
+        title: const Text("Sejarah Indonesia AI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: Column(
@@ -121,44 +123,52 @@ class _ChatSejarahScreenState extends State<ChatSejarahScreen> {
               width: double.infinity,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
+                ],
                 border: Border.all(color: Colors.red.shade100),
               ),
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Jawaban:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                    const Text("Jawaban AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16)),
                     const Divider(),
-                    if (_isLoading) const LinearProgressIndicator(color: Colors.red),
+                    if (_isLoading) const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: LinearProgressIndicator(color: Colors.red),
+                    ),
                     const SizedBox(height: 10),
-                    Text(_aiResponse, style: const TextStyle(fontSize: 18)),
+                    Text(_aiResponse, style: const TextStyle(fontSize: 18, height: 1.5)),
                   ],
                 ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 25),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _controller,
                     decoration: InputDecoration(
-                      hintText: "Ketik pertanyaan sejarah...",
+                      hintText: "Contoh: Siapa pendiri Majapahit?",
                       filled: true,
                       fillColor: Colors.red.shade50,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                     ),
-                    onSubmitted: (val) => _askAi(val),
+                    onSubmitted: _askAi,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 CircleAvatar(
+                  radius: 25,
                   backgroundColor: Colors.red,
                   child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
+                    icon: const Icon(Icons.send_rounded, color: Colors.white),
                     onPressed: () => _askAi(_controller.text),
                   ),
                 ),
