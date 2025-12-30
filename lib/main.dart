@@ -6,183 +6,286 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
-  runApp(const AIChatApp());
+  runApp(const MyApp());
 }
 
-class AIChatApp extends StatelessWidget {
-  const AIChatApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        fontFamily: 'Roboto',
-        useMaterial3: true,
-      ),
-      home: const ChatScreen(),
+      home: ChatPage(),
     );
   }
 }
 
-class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+class ChatPage extends StatefulWidget {
+  const ChatPage({super.key});
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatPageState extends State<ChatPage>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
-  final List<Map<String, String>> _messages = [];
-  bool _isTyping = false;
 
-  Future<void> _sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
+  String _response = "Silakan tanya sejarah Indonesia.";
+  bool _loading = false;
+  String? _modelName;
 
-    setState(() {
-      _messages.add({"role": "user", "text": text});
-      _isTyping = true;
-    });
+  late AnimationController _typingController;
 
-    _controller.clear();
-
-    // ==== SIMULASI AI (GANTI DENGAN API GEMINI KAMU) ====
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      _messages.add({
-        "role": "ai",
-        "text":
-            "Indonesia merdeka pada tanggal 17 Agustus 1945 yang diproklamasikan oleh Ir. Soekarno dan Mohammad Hatta."
-      });
-      _isTyping = false;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _typingController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 1))
+          ..repeat();
   }
 
+  @override
+  void dispose() {
+    _typingController.dispose();
+    super.dispose();
+  }
+
+  // ============================
+  // LOAD MODEL (TIDAK DIUBAH)
+  // ============================
+  Future<void> _loadValidModel(String apiKey) async {
+    final uri = Uri.parse(
+      "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey",
+    );
+
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception("Gagal mengambil daftar model: ${res.body}");
+    }
+
+    final data = jsonDecode(res.body);
+    final models = data["models"] as List<dynamic>;
+
+    for (final m in models) {
+      final methods = (m["supportedGenerationMethods"] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+      if (methods.contains("generateContent")) {
+        _modelName = m["name"];
+        break;
+      }
+    }
+  }
+
+  // ============================
+  // ASK AI (TIDAK DIUBAH)
+  // ============================
+  Future<void> _askAI(String question) async {
+    if (question.trim().isEmpty) return;
+
+    final apiKey = dotenv.env['GEMINI_API_KEY'];
+    if (apiKey == null || apiKey.isEmpty) {
+      setState(() => _response = "❌ API Key tidak ditemukan di .env");
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _response = "AI sedang berpikir";
+    });
+
+    try {
+      _modelName ??= (await () async {
+        await _loadValidModel(apiKey);
+        return _modelName!;
+      }());
+
+      final uri = Uri.parse(
+        "https://generativelanguage.googleapis.com/v1beta/$_modelName:generateContent?key=$apiKey",
+      );
+
+      final res = await http.post(
+        uri,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text":
+                      "Kamu adalah pakar sejarah Indonesia. Jawab dengan jelas:\n$question"
+                }
+              ]
+            }
+          ]
+        }),
+      );
+
+      final data = jsonDecode(res.body);
+      setState(() {
+        _response =
+            data["candidates"]?[0]?["content"]?["parts"]?[0]?["text"] ??
+                "⚠️ Tidak ada jawaban dari AI.";
+      });
+    } catch (e) {
+      setState(() => _response = "❌ Error: $e");
+    } finally {
+      setState(() {
+        _loading = false;
+        _controller.clear();
+      });
+    }
+  }
+
+  // ============================
+  // UI PREMIUM (TIDAK POLOS)
+  // ============================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xff0F172A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          "Pakar Sejarah AI",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                final isUser = msg["role"] == "user";
-                return ChatBubble(
-                  text: msg["text"]!,
-                  isUser: isUser,
-                );
-              },
-            ),
-          ),
-
-          if (_isTyping)
-            const Padding(
-              padding: EdgeInsets.only(left: 16, bottom: 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "AI sedang mengetik...",
-                  style: TextStyle(color: Colors.white70),
-                ),
-              ),
-            ),
-
-          _buildInputArea(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: const BoxDecoration(
-        color: Color(0xff020617),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: "Tanyakan sejarah Indonesia...",
-                hintStyle: const TextStyle(color: Colors.white54),
-                filled: true,
-                fillColor: const Color(0xff020617),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(25),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20),
-              ),
-              onSubmitted: _sendMessage,
-            ),
-          ),
-          const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: Colors.blueAccent,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: Colors.white),
-              onPressed: () => _sendMessage(_controller.text),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ChatBubble extends StatelessWidget {
-  final String text;
-  final bool isUser;
-
-  const ChatBubble({
-    super.key,
-    required this.text,
-    required this.isUser,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment:
-          isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(14),
-        constraints: const BoxConstraints(maxWidth: 280),
-        decoration: BoxDecoration(
-          color: isUser
-              ? Colors.blueAccent
-              : const Color(0xff1E293B),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft:
-                isUser ? const Radius.circular(16) : Radius.zero,
-            bottomRight:
-                isUser ? Radius.zero : const Radius.circular(16),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF6C63FF),
+              Color(0xFFB39DFF),
+              Color(0xFFF6F7FB),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
         ),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // HEADER (1 AVATAR)
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.6),
+                            blurRadius: 18,
+                          ),
+                        ],
+                      ),
+                      child: const CircleAvatar(
+                        radius: 24,
+                        backgroundColor: Colors.white,
+                        child: Icon(
+                          Icons.smart_toy_rounded,
+                          color: Color(0xFF6C63FF),
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Text(
+                      "Pakar Sejarah AI",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // CHAT CARD
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.92),
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: SingleChildScrollView(
+                      child: _loading
+                          ? AnimatedBuilder(
+                              animation: _typingController,
+                              builder: (_, __) {
+                                final dots = "." *
+                                    ((_typingController.value * 3).ceil());
+                                return Text(
+                                  "AI sedang berpikir$dots",
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                );
+                              },
+                            )
+                          : Text(
+                              _response,
+                              style: const TextStyle(
+                                fontSize: 16.5,
+                                height: 1.7,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // INPUT FLOATING
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          decoration: const InputDecoration(
+                            hintText: "Tanyakan sejarah Indonesia...",
+                            border: InputBorder.none,
+                          ),
+                          onSubmitted: _askAI,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.send_rounded,
+                          color: Color(0xFF6C63FF),
+                        ),
+                        onPressed: () => _askAI(_controller.text),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
