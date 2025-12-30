@@ -5,12 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    // Memastikan file .env terbaca
-    await dotenv.load(fileName: ".env");
-  } catch (e) {
-    debugPrint("File .env tidak ditemukan: $e");
-  }
+  await dotenv.load(fileName: ".env");
   runApp(const MyApp());
 }
 
@@ -33,30 +28,30 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin {
+class _ChatPageState extends State<ChatPage>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
-  String _response = "Silakan tanya sejarah Indonesia.";
+
+  String _response = "How can ALIFORNIA ai help?";
   bool _loading = false;
   String? _modelName;
+
   late AnimationController _typingController;
 
   @override
   void initState() {
     super.initState();
-    _typingController = AnimationController(
-      vsync: this, 
-      duration: const Duration(seconds: 1)
-    )..repeat();
+    _typingController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 1))
+          ..repeat();
   }
 
   @override
   void dispose() {
     _typingController.dispose();
-    _controller.dispose();
     super.dispose();
   }
 
-  // Fungsi untuk mendapatkan model yang tersedia (Gemini 1.5, dll)
   Future<void> _loadValidModel(String apiKey) async {
     final uri = Uri.parse(
       "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey",
@@ -64,7 +59,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
 
     final res = await http.get(uri);
     if (res.statusCode != 200) {
-      throw Exception("Gagal memuat model. Status: ${res.statusCode}");
+      throw Exception("Gagal mengambil daftar model: ${res.body}");
     }
 
     final data = jsonDecode(res.body);
@@ -72,8 +67,9 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
 
     for (final m in models) {
       final methods = (m["supportedGenerationMethods"] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList() ?? [];
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
       if (methods.contains("generateContent")) {
         _modelName = m["name"];
         break;
@@ -86,7 +82,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
 
     final apiKey = dotenv.env['GEMINI_API_KEY'];
     if (apiKey == null || apiKey.isEmpty) {
-      setState(() => _response = "❌ Error: API Key tidak ditemukan di file .env");
+      setState(() => _response = "❌ API Key tidak ditemukan di .env");
       return;
     }
 
@@ -96,10 +92,10 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
     });
 
     try {
-      // Inisialisasi model jika belum ada
-      if (_modelName == null) {
+      _modelName ??= (await () async {
         await _loadValidModel(apiKey);
-      }
+        return _modelName!;
+      }());
 
       final uri = Uri.parse(
         "https://generativelanguage.googleapis.com/v1beta/$_modelName:generateContent?key=$apiKey",
@@ -112,7 +108,10 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
           "contents": [
             {
               "parts": [
-                {"text": "Kamu adalah pakar sejarah Indonesia. Jawab pertanyaan ini dengan akurat: $question"}
+                {
+                  "text":
+                      "Kamu adalah pakar sejarah Indonesia. Jawab dengan jelas:\n$question"
+                }
               ]
             }
           ]
@@ -120,21 +119,13 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
       );
 
       final data = jsonDecode(res.body);
-
       setState(() {
-        if (res.statusCode == 200) {
-          // Navigasi JSON yang aman agar AI bisa 'membaca' response
-          if (data["candidates"] != null && data["candidates"].isNotEmpty) {
-            _response = data["candidates"][0]["content"]["parts"][0]["text"];
-          } else {
-            _response = "⚠️ AI tidak memberikan jawaban. Detail: ${res.body}";
-          }
-        } else {
-          _response = "❌ Error ${res.statusCode}: ${data['error']?['message'] ?? 'Gagal menghubungi AI'}";
-        }
+        _response =
+            data["candidates"]?[0]?["content"]?["parts"]?[0]?["text"] ??
+                "⚠️ Tidak ada jawaban dari AI.";
       });
     } catch (e) {
-      setState(() => _response = "❌ Terjadi kesalahan koneksi: $e");
+      setState(() => _response = "❌ Error: $e");
     } finally {
       setState(() {
         _loading = false;
@@ -149,7 +140,11 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF6C63FF), Color(0xFFB39DFF), Color(0xFFF6F7FB)],
+            colors: [
+              Color.fromARGB(255, 15, 3, 237),
+              Color.fromARGB(255, 43, 3, 188),
+              Color.fromARGB(255, 0, 14, 67),
+            ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -157,59 +152,100 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
         child: SafeArea(
           child: Column(
             children: [
-              // Header UI
-              Padding(
+              Container(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    const CircleAvatar(
-                      radius: 24,
-                      backgroundColor: Colors.white,
-                      child: Icon(Icons.smart_toy_rounded, color: Color(0xFF6C63FF)),
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.6),
+                            blurRadius: 18,
+                          ),
+                        ],
+                      ),
+                      child: const CircleAvatar(
+                        radius: 24,
+                        backgroundColor: Colors.white,
+                        child: Icon(
+                          Icons.smart_toy_rounded,
+                          color: Color.fromARGB(255, 16, 4, 244),
+                          size: 28,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 14),
                     const Text(
-                      "Pakar Sejarah AI",
-                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      "ALIFORIA AI Sejarah Indonesia",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ],
                 ),
               ),
-              // Area Tampilan Pesan
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Container(
-                    width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.95),
+                      color: Colors.white.withOpacity(0.92),
                       borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
                     child: SingleChildScrollView(
                       child: _loading
                           ? AnimatedBuilder(
                               animation: _typingController,
                               builder: (_, __) {
-                                final dots = "." * ((_typingController.value * 3).ceil());
-                                return Text("AI sedang berpikir$dots", 
-                                    style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic));
+                                final dots = "." *
+                                    ((_typingController.value * 3).ceil());
+                                return Text(
+                                  "AI sedang berpikir$dots",
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                );
                               },
                             )
-                          : Text(_response, style: const TextStyle(fontSize: 16, height: 1.6)),
+                          : Text(
+                              _response,
+                              style: const TextStyle(
+                                fontSize: 16.5,
+                                height: 1.7,
+                              ),
+                            ),
                     ),
                   ),
                 ),
               ),
-              // Input Chat
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(35),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 15)],
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
@@ -217,14 +253,17 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                         child: TextField(
                           controller: _controller,
                           decoration: const InputDecoration(
-                            hintText: "Tanyakan sejarah Indonesia...",
+                            hintText: "Enter the command for ALIFORIA...",
                             border: InputBorder.none,
                           ),
                           onSubmitted: _askAI,
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.send_rounded, color: Color(0xFF6C63FF)),
+                        icon: const Icon(
+                          Icons.send_rounded,
+                          color: Color.fromARGB(255, 14, 3, 238),
+                        ),
                         onPressed: () => _askAI(_controller.text),
                       ),
                     ],

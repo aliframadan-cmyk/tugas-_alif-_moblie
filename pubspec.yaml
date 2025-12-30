@@ -17,11 +17,6 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.2.0
 
-  dependencies:
-  flutter:
-    sdk: flutter
-  google_generative_ai: ^0.4.0 # Tambahkan ini
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
